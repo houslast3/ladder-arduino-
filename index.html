@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arduino Logic - SCADA & Ladder</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            color: #e0e0e0;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .toolbar {
+            background: rgba(20, 20, 20, 0.98);
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 3px solid #00ff88;
+            box-shadow: 0 4px 30px rgba(0, 255, 136, 0.2);
+            z-index: 100;
+        }
+
+        .toolbar-left, .toolbar-right {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 22px;
+            font-weight: bold;
+            color: #00ff88;
+            text-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+        }
+
+        .nav-tabs {
+            display: flex;
+            gap: 5px;
+            background: rgba(30, 30, 30, 0.5);
+            padding: 5px;
+            border-radius: 10px;
+        }
+
+        .nav-tab {
+            padding: 10px 25px;
+            border: none;
+            background: transparent;
+            color: #888;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .nav-tab:hover { color: #00ff88; background: rgba(0, 255, 136, 0.1); }
+        .nav-tab.active { background: linear-gradient(135deg, #00ff88, #00cc6a); color: #000; }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: all 0.3s;
+            text-transform: uppercase;
+        }
+
+        .btn-connect { background: linear-gradient(135deg, #00ff88, #00cc6a); color: #000; }
+
+        .status-badge {
+            padding: 10px 20px;
+            border-radius: 25px;
+            background: rgba(255, 0, 68, 0.15);
+            border: 2px solid #ff0044;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+        }
+
+        .status-badge.connected { background: rgba(0, 255, 136, 0.15); border-color: #00ff88; }
+
+        .status-dot {
+            width: 12px; height: 12px;
+            border-radius: 50%;
+            background: #ff0044;
+            animation: pulse 1.5s infinite;
+        }
+
+        .status-badge.connected .status-dot { background: #00ff88; }
+
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+        .page { display: none; height: calc(100vh - 65px); overflow: hidden; }
+        .page.active { display: flex; }
+
+        .ladder-container { display: grid; grid-template-columns: 280px 1fr 250px; width: 100%; height: 100%; }
+
+        .ladder-toolbox {
+            background: rgba(20, 20, 20, 0.98);
+            border-right: 2px solid #00ff88;
+            padding: 15px;
+            overflow-y: auto;
+        }
+
+        .toolbox-title { font-size: 14px; color: #00ff88; margin-bottom: 12px; text-transform: uppercase; }
+        .toolbox-section { margin-bottom: 15px; }
+        .toolbox-section h3 { font-size: 11px; color: #888; margin-bottom: 8px; text-transform: uppercase; }
+
+        .tool-item {
+            background: rgba(30, 30, 30, 0.8);
+            border: 2px solid #333;
+            border-radius: 6px;
+            padding: 8px 10px;
+            margin-bottom: 5px;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+        }
+
+        .tool-item:hover { border-color: #00ff88; background: rgba(0, 255, 136, 0.1); }
+        .tool-item.selected { border-color: #00ff88; background: rgba(0, 255, 136, 0.2); }
+
+        .tool-icon {
+            width: 30px; height: 22px;
+            background: #333;
+            border-radius: 3px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 9px;
+            font-weight: bold;
+            color: #00ff88;
+        }
+
+        .ladder-workspace {
+            background: linear-gradient(rgba(0, 255, 136, 0.02) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(0, 255, 136, 0.02) 1px, transparent 1px);
+            background-size: 20px 20px;
+            padding: 15px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .ladder-rung {
+            background: rgba(20, 20, 20, 0.9);
+            border: 2px solid #333;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 8px;
+            min-height: 50px;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .rung-number {
+            position: absolute;
+            left: -30px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 10px;
+            color: #666;
+        }
+
+        .rung-main {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            min-height: 35px;
+            border-left: 3px solid #00ff88;
+            border-right: 3px solid #00ff88;
+            padding: 0 8px;
+            cursor: pointer;
+        }
+
+        .rung-parallel {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            margin-left: 10px;
+            padding: 5px;
+            border-left: 2px dashed #ff8800;
+        }
+
+        .parallel-row { display: flex; align-items: center; gap: 2px; min-height: 30px; }
+
+        .ladder-element {
+            background: rgba(30, 30, 30, 0.9);
+            border: 2px solid #444;
+            border-radius: 4px;
+            padding: 4px 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 4px;
+            min-width: 110px;
+            font-size: 10px;
+        }
+
+        .ladder-element:hover { border-color: #00ff88; }
+        .ladder-element.input-no { border-color: #00ff88; }
+        .ladder-element.input-nc { border-color: #ff0044; }
+        .ladder-element.output { border-color: #00ff88; background: rgba(0, 255, 136, 0.1); }
+        .ladder-element.timer { border-color: #ff8800; background: rgba(255, 136, 0, 0.1); }
+        .ladder-element.counter { border-color: #0088ff; background: rgba(0, 136, 255, 0.1); }
+        .ladder-element.math { border-color: #ff00ff; background: rgba(255, 0, 255, 0.1); }
+        .ladder-element.pwm { border-color: #ffff00; background: rgba(255, 255, 0, 0.1); }
+        .ladder-element.display { border-color: #00ffff; background: rgba(0, 255, 255, 0.1); }
+        .ladder-element.parallel-element { border-style: dashed; border-color: #ff8800; }
+
+        .element-symbol { font-weight: bold; color: #00ff88; }
+        .element-label { color: #888; }
+        .element-meta { color: #5e8c74; font-size: 8px; line-height: 1.2; }
+
+        .rung-actions {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: none;
+            gap: 4px;
+        }
+
+        .ladder-rung:hover .rung-actions { display: flex; }
+
+        .rung-btn {
+            padding: 3px 8px;
+            background: rgba(255, 0, 68, 0.3);
+            border: 1px solid #ff0044;
+            border-radius: 3px;
+            color: #ff0044;
+            cursor: pointer;
+            font-size: 9px;
+        }
+
+        .add-rung-btn {
+            width: 100%;
+            padding: 10px;
+            background: rgba(0, 255, 136, 0.1);
+            border: 2px dashed #00ff88;
+            border-radius: 8px;
+            color: #00ff88;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .code-panel {
+            background: rgba(20, 20, 20, 0.98);
+            border-top: 2px solid #00ff88;
+            padding: 8px;
+            margin-top: auto;
+        }
+
+        .code-preview-title { font-size: 10px; color: #888; margin-bottom: 4px; text-transform: uppercase; }
+
+        .code-preview-content {
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            color: #00ff88;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 6px;
+            border-radius: 4px;
+            min-height: 25px;
+            word-break: break-all;
+        }
+
+        .ladder-actions { display: flex; gap: 6px; margin-top: 8px; }
+        .btn-send { background: linear-gradient(135deg, #00ff88, #00cc6a); color: #000; flex: 1; }
+        .btn-clear { background: linear-gradient(135deg, #ff0044, #cc0033); color: white; }
+
+        .status-panel {
+            background: rgba(20, 20, 20, 0.98);
+            border-left: 2px solid #00ff88;
+            padding: 12px;
+            overflow-y: auto;
+        }
+
+        .status-title { font-size: 12px; color: #00ff88; margin-bottom: 10px; text-transform: uppercase; }
+        .status-group { margin-bottom: 12px; }
+        .status-group-title { font-size: 9px; color: #666; margin-bottom: 6px; text-transform: uppercase; }
+        .status-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+
+        .status-item {
+            background: rgba(30, 30, 30, 0.8);
+            border: 1px solid #333;
+            border-radius: 3px;
+            padding: 4px;
+            text-align: center;
+            font-size: 9px;
+        }
+
+        .status-item.active { border-color: #00ff88; background: rgba(0, 255, 136, 0.2); }
+        .status-item .label { color: #888; font-size: 8px; }
+        .status-item .meta { color: #5e8c74; font-size: 7px; line-height: 1.1; min-height: 18px; margin: 2px 0; }
+        .status-item .value { color: #00ff88; font-size: 12px; font-weight: bold; }
+
+        .rung-parallel-header {
+            font-size: 9px;
+            color: #ffb366;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .or-placeholder {
+            color: #777;
+            font-size: 10px;
+            border: 1px dashed #555;
+            border-radius: 4px;
+            padding: 6px 8px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal.show { display: flex; }
+
+        .modal-content {
+            background: linear-gradient(135deg, #1a1a1a, #0a0a0a);
+            padding: 20px;
+            border-radius: 10px;
+            width: 350px;
+            border: 2px solid #00ff88;
+        }
+
+        .modal-content h2 { margin-bottom: 12px; color: #00ff88; font-size: 16px; }
+
+        .form-group { margin-bottom: 10px; }
+        .form-group label { display: block; margin-bottom: 4px; color: #888; font-size: 10px; text-transform: uppercase; }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 8px;
+            background: rgba(30, 30, 30, 0.9);
+            border: 2px solid #333;
+            border-radius: 4px;
+            color: #e0e0e0;
+            font-size: 12px;
+        }
+
+        .form-group input:focus, .form-group select:focus { border-color: #00ff88; outline: none; }
+
+        .modal-buttons { display: flex; gap: 6px; margin-top: 12px; }
+        .modal-buttons button { flex: 1; }
+        .btn-delete { background: linear-gradient(135deg, #ff0044, #cc0033); color: white; }
+
+        .context-menu {
+            display: none;
+            position: fixed;
+            background: rgba(20, 20, 20, 0.98);
+            border: 2px solid #00ff88;
+            border-radius: 6px;
+            padding: 4px 0;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.9);
+            z-index: 2000;
+            min-width: 160px;
+        }
+
+        .context-menu.show { display: block; }
+
+        .context-menu-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            color: #e0e0e0;
+            font-size: 11px;
+        }
+
+        .context-menu-item:hover { background: rgba(0, 255, 136, 0.15); color: #00ff88; }
+
+        #scadaPage iframe { width: 100%; height: 100%; border: none; }
+
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #1a1a1a; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <div class="toolbar-left">
+            <div class="logo">⚡ Arduino Logic</div>
+            <div class="nav-tabs">
+                <button class="nav-tab active" onclick="showPage('ladder', this)">📐 Ladder</button>
+                <button class="nav-tab" onclick="showPage('scada', this)">🖥️ SCADA</button>
+            </div>
+        </div>
+        <div class="toolbar-right">
+            <button id="connectBtn" class="btn btn-connect">🔌 Conectar</button>
+            <div class="status-badge" id="statusBadge">
+                <div class="status-dot"></div>
+                <span id="statusText">Desconectado</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="ladderPage" class="page active">
+        <div class="ladder-container">
+            <div class="ladder-toolbox">
+                <div class="toolbox-title">🧰 Toolbox</div>
+                
+                <div class="toolbox-section">
+                    <h3>Entradas Digitais</h3>
+                    <div class="tool-item" onclick="selectTool('input-no', this)">
+                        <div class="tool-icon">NO</div>
+                        <span>Contato NO - entradas, saidas e estados</span>
+                    </div>
+                    <div class="tool-item" onclick="selectTool('input-nc', this)">
+                        <div class="tool-icon">NC</div>
+                        <span>Contato NC - entradas, saidas e estados</span>
+                    </div>
+                </div>
+
+                <div class="toolbox-section">
+                    <h3>Sensores</h3>
+                    <div class="tool-item" onclick="selectTool('sensor-no', this)">
+                        <div class="tool-icon">S</div>
+                        <span>Contato NO - sensores S1, S2, S3...</span>
+                    </div>
+                    <div class="tool-item" onclick="selectTool('sensor-nc', this)">
+                        <div class="tool-icon">!S</div>
+                        <span>Contato NC - sensores S1, S2, S3...</span>
+                    </div>
+                    <div class="tool-item" onclick="selectTool('sensor-compare', this)">
+                        <div class="tool-icon">S=</div>
+                        <span>Comparar leitura do sensor</span>
+                    </div>
+                </div>
+
+                <div class="toolbox-section">
+                    <h3>Variáveis Virtuais</h3>
+                    <div class="tool-item" onclick="selectTool('virtual-no', this)">
+                        <div class="tool-icon">V</div>
+                        <span>V1...V10 normal</span>
+                    </div>
+                    <div class="tool-item" onclick="selectTool('virtual-nc', this)">
+                        <div class="tool-icon">!V</div>
+                        <span>V1...V10 negado</span>
+                    </div>
+                </div>
+
+                <div class="toolbox-section">
+                    <h3>Temporizadores</h3>
+                    <div class="tool-item" onclick="selectTool('timer-start', this)">
+                        <div class="tool-icon">T</div>
+                        <span>Iniciar T?</span>
+                    </div>
+                    <div class="tool-item" onclick="selectTool('timer-check', this)">
+                        <div class="tool-icon">T=</div>
+                        <span>Verificar T?=?</span>
+                    </div>
+                    <div class="tool-item" onclick="selectTool('timer-nf', this)">
+                        <div class="tool-icon">!T=</div>
+                        <span>Timer NF</span>
+                    </div>
+                    <div class="tool-item" onclick="selectTool('timer-reset', this)">
+                        <div class="tool-icon">TR</div>
+                        <span>Reset T?R</span>
+                    </div>
+                </div>
+
+                <div class="toolbox-section">
+                    <h3>Contadores</h3>
+                    <div class="tool-item" onclick="selectTool('counter-inc', this)">
+                        <div class="tool-icon">C</div>
+                        <span>Incrementar C?</span>
+                    </div>
+                    <div class="tool-item" onclick="selectTool('counter-check', this)">
+                        <div class="tool-icon">C=</div>
+                        <span>Verificar C?=?</span>
+                    </div>
+                    <div class="tool-item" onclick="selectTool('counter-reset', this)">
+                        <div class="tool-icon">CR</div>
+                        <span>Reset C?R</span>
+                    </div>
+                </div>
+
+                <div class="toolbox-section">
+                    <h3>Saídas</h3>
+                    <div class="tool-item" onclick="selectTool('output', this)">
+                        <div class="tool-icon">( )</div>
+                        <span>Saida digital A01, A02, D11, D12, D13</span>
+                    </div>
+                    <div class="tool-item" onclick="selectTool('virtual', this)">
+                        <div class="tool-icon">V</div>
+                        <span>Variavel virtual V1...V10</span>
+                    </div>
+                    <div class="tool-item" onclick="selectTool('pwm', this)">
+                        <div class="tool-icon">PWM</div>
+                        <span>Saida PWM D9 ou D10</span>
+                    </div>
+                </div>
+
+                <div class="toolbox-section">
+                    <h3>Matemática</h3>
+                    <div class="tool-item" onclick="selectTool('math-cmp', this)">
+                        <div class="tool-icon">M</div>
+                        <span>Comparação</span>
+                    </div>
+                    <div class="tool-item" onclick="selectTool('analog-read', this)">
+                        <div class="tool-icon">A</div>
+                        <span>Leitura Analógica</span>
+                    </div>
+                </div>
+
+                <div class="toolbox-section">
+                    <h3>Display I2C</h3>
+                    <div class="tool-item" onclick="selectTool('display', this)">
+                        <div class="tool-icon">LCD</div>
+                        <span>Display I2C - Itexto:variavel</span>
+                    </div>
+                </div>
+
+                <div class="toolbox-section">
+                    <h3>Logica</h3>
+                    <div class="tool-item" onclick="selectTool('or', this)">
+                        <div class="tool-icon">OR</div>
+                        <span>Criar grupo OR visual</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="ladder-workspace">
+                <div id="ladderRungs"></div>
+                <button class="add-rung-btn" onclick="addRung()">+ Adicionar Linha</button>
+                
+                <div class="code-panel">
+                    <div class="code-preview-title">Código Gerado:</div>
+                    <div class="code-preview-content" id="codePreview">CODE:</div>
+                    <div class="ladder-actions">
+                        <button class="btn btn-send" onclick="sendCode()">📤 Enviar</button>
+                        <button class="btn btn-clear" onclick="clearAll()">🗑️ Limpar</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="status-panel">
+                <div class="status-title">📊 Status</div>
+                <div class="status-group">
+                    <div class="status-group-title">Entradas D1-D6</div>
+                    <div class="status-grid" id="statusInputs"></div>
+                </div>
+                <div class="status-group">
+                    <div class="status-group-title">Sensores S1-S8</div>
+                    <div class="status-grid" id="statusSensors"></div>
+                </div>
+                <div class="status-group">
+                    <div class="status-group-title">Saidas A01, A02, D9-D13</div>
+                    <div class="status-grid" id="statusOutputs"></div>
+                </div>
+                <div class="status-group">
+                    <div class="status-group-title">Analógicas A2-A3</div>
+                    <div class="status-grid" id="statusAnalog"></div>
+                </div>
+                <div class="status-group">
+                    <div class="status-group-title">Leituras dos Sensores</div>
+                    <div class="status-grid" id="statusSensorReadings"></div>
+                </div>
+                <div class="status-group">
+                    <div class="status-group-title">Temporizadores</div>
+                    <div class="status-grid" id="statusTimers"></div>
+                </div>
+                <div class="status-group">
+                    <div class="status-group-title">Contadores</div>
+                    <div class="status-grid" id="statusCounters"></div>
+                </div>
+                <div class="status-group">
+                    <div class="status-group-title">Virtuais V1-V5</div>
+                    <div class="status-grid" id="statusVirtual"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="scadaPage" class="page">
+        <iframe src="scada.html"></iframe>
+    </div>
+
+    <!-- Modal Config -->
+    <div class="modal" id="configModal">
+        <div class="modal-content">
+            <h2 id="modalTitle">Configurar</h2>
+            <div class="form-group" id="numGroup">
+                <label>Porta / item</label>
+                <select id="elementNum">
+                    <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+                    <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+                    <option value="7">7</option><option value="8">8</option><option value="9">9</option>
+                    <option value="10">10</option><option value="11">11</option><option value="12">12</option>
+                    <option value="13">13</option>
+                </select>
+            </div>
+            <div class="form-group" id="valueGroup" style="display:none;">
+                <label>Valor</label>
+                <input type="number" id="elementValue" value="1000">
+            </div>
+            <div class="form-group" id="analogGroup" style="display:none;">
+                <label>Entrada Analógica</label>
+                <select id="elementAnalog">
+                    <option value="A2">A2</option>
+                    <option value="A3">A3</option>
+                </select>
+            </div>
+            <div class="form-group" id="pwmGroup" style="display:none;">
+                <label>Saída PWM</label>
+                <select id="elementPwm">
+                    <option value="D9">D9</option>
+                    <option value="D10">D10</option>
+                </select>
+            </div>
+            <div class="form-group" id="minmaxGroup" style="display:none;">
+                <label>Min/Max (ex: 125,1000)</label>
+                <input type="text" id="elementMinMax" value="0,1023">
+            </div>
+            <div class="form-group" id="mathGroup" style="display:none;">
+                <label>Expressão (ex: A2*2)</label>
+                <input type="text" id="elementMath" value="A2">
+            </div>
+            <div class="form-group" id="cmpGroup" style="display:none;">
+                <label>Comparação (>= <= =)</label>
+                <select id="elementCmp">
+                    <option value=">=">>=</option>
+                    <option value="<="><=</option>
+                    <option value="=">=</option>
+                </select>
+            </div>
+            <div class="form-group" id="cmpValueGroup" style="display:none;">
+                <label>Valor Comparação</label>
+                <input type="number" id="elementCmpValue" value="500">
+            </div>
+            <div class="form-group" id="displayTextGroup" style="display:none;">
+                <label>Texto do Display</label>
+                <input type="text" id="elementDisplayText" placeholder="Ex: Temp" maxlength="16">
+            </div>
+            <div class="form-group" id="displayVarGroup" style="display:none;">
+                <label>Variável do Display</label>
+                <select id="elementDisplayVar">
+                    <option value="S1T">S1T - DHT22 Temperatura</option>
+                    <option value="S1H">S1H - DHT22 Umidade</option>
+                    <option value="S2T">S2T - DS18B20 Temperatura</option>
+                    <option value="S3T">S3T - AM2302 Temperatura</option>
+                    <option value="S4H">S4H - AM2302 Umidade</option>
+                    <option value="S5T">S5T - DS18B20 Temperatura</option>
+                    <option value="S6T">S6T - BME280 Temperatura</option>
+                    <option value="S7H">S7H - BME280 Umidade</option>
+                    <option value="S8P">S8P - BME280 Pressão</option>
+                    <option value="A2">A2 - Entrada Analógica</option>
+                    <option value="A3">A3 - Entrada Analógica</option>
+                    <option value="D1">D1 - Entrada Digital</option>
+                    <option value="D2">D2 - Entrada Digital</option>
+                    <option value="D3">D3 - Entrada Digital</option>
+                    <option value="D4">D4 - Entrada Digital</option>
+                    <option value="D5">D5 - Entrada Digital</option>
+                    <option value="D6">D6 - Entrada Digital</option>
+                    <option value="V1">V1 - Variável Virtual</option>
+                    <option value="V2">V2 - Variável Virtual</option>
+                    <option value="V3">V3 - Variável Virtual</option>
+                    <option value="V4">V4 - Variável Virtual</option>
+                    <option value="V5">V5 - Variável Virtual</option>
+                    <option value="T1">T1 - Timer</option>
+                    <option value="T2">T2 - Timer</option>
+                    <option value="T3">T3 - Timer</option>
+                    <option value="C1">C1 - Contador</option>
+                    <option value="C2">C2 - Contador</option>
+                    <option value="C3">C3 - Contador</option>
+                </select>
+            </div>
+            <div class="modal-buttons">
+                <button class="btn btn-connect" onclick="saveElement()">Salvar</button>
+                <button class="btn btn-delete" id="deleteElementBtn" onclick="deleteElement()">Excluir</button>
+                <button class="btn" style="background:#444" onclick="closeModal()">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Context Menu -->
+    <div class="context-menu" id="contextMenu">
+        <div class="context-menu-item" onclick="makeParallel()">🔀 Paralelo (OR)</div>
+        <div class="context-menu-item" onclick="editElement()">✏️ Editar</div>
+        <div class="context-menu-item" onclick="deleteElementContext()">🗑️ Excluir</div>
+    </div>
+
+    <script src="port_catalog.js"></script>
+    <script src="index.js"></script>
+</body>
+</html>

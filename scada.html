@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SCADA Industrial - Arduino Logic</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            color: #e0e0e0;
+            overflow: hidden;
+            height: 100vh;
+        }
+        .toolbar {
+            background: rgba(20, 20, 20, 0.98);
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 3px solid #00ff88;
+            box-shadow: 0 4px 30px rgba(0, 255, 136, 0.2);
+            z-index: 100;
+        }
+        .toolbar-left, .toolbar-right { display: flex; gap: 12px; align-items: center; }
+        .logo { font-size: 22px; font-weight: bold; color: #00ff88; text-shadow: 0 0 20px rgba(0, 255, 136, 0.5); }
+        .btn {
+            padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer;
+            font-size: 14px; font-weight: bold; transition: all 0.3s; text-transform: uppercase;
+        }
+        .btn:hover { transform: translateY(-2px); }
+        .btn-connect { background: linear-gradient(135deg, #00ff88, #00cc6a); color: #000; box-shadow: 0 4px 20px rgba(0, 255, 136, 0.4); }
+        .btn-add { background: linear-gradient(135deg, #0088ff, #0066cc); color: white; box-shadow: 0 4px 20px rgba(0, 136, 255, 0.4); }
+        .btn-edit { background: linear-gradient(135deg, #ff8800, #cc6600); color: white; box-shadow: 0 4px 20px rgba(255, 136, 0, 0.4); }
+        .btn-edit.active { background: linear-gradient(135deg, #ff0044, #cc0033); box-shadow: 0 4px 20px rgba(255, 0, 68, 0.4); }
+        .status-badge {
+            padding: 10px 20px; border-radius: 25px; background: rgba(255, 0, 68, 0.15);
+            border: 2px solid #ff0044; display: flex; align-items: center; gap: 10px; font-size: 13px;
+        }
+        .status-badge.connected { background: rgba(0, 255, 136, 0.15); border-color: #00ff88; }
+        .status-dot { width: 12px; height: 12px; border-radius: 50%; background: #ff0044; animation: pulse 1.5s infinite; }
+        .status-badge.connected .status-dot { background: #00ff88; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .canvas-container {
+            position: relative; width: 100%; height: calc(100vh - 65px); overflow: auto;
+            background: radial-gradient(circle at 50% 50%, rgba(0, 255, 136, 0.03) 0%, transparent 50%),
+                        linear-gradient(rgba(0, 255, 136, 0.02) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(0, 255, 136, 0.02) 1px, transparent 1px);
+            background-size: 100% 100%, 40px 40px, 40px 40px;
+        }
+        .scada-canvas { position: relative; min-width: 2000px; min-height: 1500px; padding: 30px; }
+        .scada-item { position: absolute; cursor: pointer; transition: box-shadow 0.3s, transform 0.2s; }
+        .scada-item:hover { z-index: 100; }
+        .scada-item.edit-mode { cursor: move; }
+        .scada-item.selected { box-shadow: 0 0 0 4px #0088ff, 0 0 30px rgba(0, 136, 255, 0.5); z-index: 101; }
+        .btn-toggle {
+            width: 200px; height: 100px; background: linear-gradient(135deg, #ff0044, #cc0033);
+            border-radius: 20px; display: flex; align-items: center; justify-content: center;
+            font-weight: bold; font-size: 24px; color: white;
+            box-shadow: 0 8px 30px rgba(255, 0, 68, 0.5), inset 0 -5px 0 rgba(0,0,0,0.3);
+            border: 4px solid rgba(255,255,255,0.1); transition: all 0.2s; text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+        .btn-toggle.active { background: linear-gradient(135deg, #00ff88, #00cc6a); box-shadow: 0 8px 40px rgba(0, 255, 136, 0.7), inset 0 -5px 0 rgba(0,0,0,0.3); }
+        .btn-toggle:active { transform: translateY(3px); box-shadow: 0 4px 20px rgba(0,0,0,0.5), inset 0 -2px 0 rgba(0,0,0,0.3); }
+        .btn-momentary {
+            width: 160px; height: 160px; background: linear-gradient(135deg, #555, #333); border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px; color: white;
+            box-shadow: 0 10px 35px rgba(0,0,0,0.7), inset 0 -8px 20px rgba(0,0,0,0.5);
+            border: 5px solid rgba(255,255,255,0.1); transition: all 0.1s; text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+        .btn-momentary.active { background: linear-gradient(135deg, #00ff88, #00cc6a); box-shadow: 0 5px 20px rgba(0, 255, 136, 1), inset 0 8px 20px rgba(0,0,0,0.5); transform: translateY(6px); }
+        .display-led {
+            width: 120px; height: 120px; background: radial-gradient(circle, #1a1a1a, #0a0a0a); border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: inset 0 0 30px rgba(0,0,0,1), 0 8px 25px rgba(0,0,0,0.7); border: 6px solid #222;
+        }
+        .display-led .led-inner {
+            width: 90px; height: 90px; border-radius: 50%;
+            background: radial-gradient(circle at 35% 35%, #ff4444, #880000); box-shadow: 0 0 30px rgba(255, 68, 68, 0.7); transition: all 0.3s;
+        }
+        .display-led.active .led-inner { background: radial-gradient(circle at 35% 35%, #44ff44, #008800); box-shadow: 0 0 60px rgba(68, 255, 68, 1), 0 0 100px rgba(68, 255, 68, 0.7); }
+        .display-led.warning .led-inner { background: radial-gradient(circle at 35% 35%, #ffaa00, #cc6600); box-shadow: 0 0 60px rgba(255, 170, 0, 1); }
+        .display-gauge {
+            width: 220px; height: 220px; background: radial-gradient(circle, #1a1a1a, #0a0a0a); border-radius: 50%;
+            padding: 20px; box-shadow: inset 0 0 40px rgba(0,0,0,1), 0 8px 30px rgba(0,0,0,0.7); border: 7px solid #222; position: relative;
+        }
+        .gauge-svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+        .gauge-bg { fill: none; stroke: #222; stroke-width: 12; }
+        .gauge-fill { fill: none; stroke: #00ff88; stroke-width: 12; stroke-linecap: round; transition: stroke-dashoffset 0.5s, stroke 0.3s; }
+        .gauge-value { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 42px; font-weight: bold; color: #00ff88; text-shadow: 0 0 20px rgba(0, 255, 136, 0.5); }
+        .gauge-label { position: absolute; top: 65%; left: 50%; transform: translateX(-50%); font-size: 12px; color: #666; }
+        .gauge-minmax { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); font-size: 11px; color: #444; display: flex; gap: 20px; }
+        .display-bar {
+            width: 100px; height: 300px; background: linear-gradient(to bottom, #1a1a1a, #0a0a0a); border-radius: 15px;
+            padding: 20px; box-shadow: inset 0 0 30px rgba(0,0,0,1), 0 8px 25px rgba(0,0,0,0.7); border: 5px solid #222; position: relative; overflow: hidden;
+        }
+        .bar-fill {
+            position: absolute; bottom: 20px; left: 20px; right: 20px;
+            background: linear-gradient(to top, #00ff88, #00cc6a, #88ff00); border-radius: 8px;
+            transition: height 0.5s, background 0.3s; box-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+        }
+        .bar-fill.warning { background: linear-gradient(to top, #ff8800, #ffaa00, #ffcc00); box-shadow: 0 0 20px rgba(255, 136, 0, 0.5); }
+        .bar-fill.danger { background: linear-gradient(to top, #ff0044, #ff3366, #ff6688); box-shadow: 0 0 20px rgba(255, 0, 68, 0.5); }
+        .bar-value { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); font-size: 22px; font-weight: bold; color: #00ff88; text-shadow: 0 0 10px rgba(0, 255, 136, 0.5); }
+        .bar-minmax { position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); font-size: 10px; color: #444; }
+        .display-text {
+            min-width: 180px; padding: 25px 30px; background: linear-gradient(135deg, rgba(20, 20, 20, 0.98), rgba(10, 10, 10, 0.98));
+            border-radius: 12px; border: 3px solid #00ff88; box-shadow: 0 8px 30px rgba(0,0,0,0.7), inset 0 0 20px rgba(0, 255, 136, 0.05);
+        }
+        .display-text .label { font-size: 13px; color: #666; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 2px; }
+        .display-text .value { font-size: 48px; font-weight: bold; color: #00ff88; font-family: 'Courier New', monospace; text-shadow: 0 0 20px rgba(0, 255, 136, 0.5); }
+        .item-label { position: absolute; bottom: -30px; left: 50%; transform: translateX(-50%); font-size: 13px; color: #888; white-space: nowrap; pointer-events: none; text-transform: uppercase; letter-spacing: 1px; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.95); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(10px); }
+        .modal.show { display: flex; }
+        .modal-content { background: linear-gradient(135deg, #1a1a1a, #0a0a0a); padding: 35px; border-radius: 20px; width: 550px; max-height: 85vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.9); border: 3px solid #00ff88; }
+        .modal-content h2 { margin-bottom: 25px; color: #00ff88; font-size: 26px; text-transform: uppercase; letter-spacing: 2px; }
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; margin-bottom: 8px; color: #888; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
+        .form-group input, .form-group select { width: 100%; padding: 14px; background: rgba(30, 30, 30, 0.9); border: 2px solid #333; border-radius: 8px; color: #e0e0e0; font-size: 15px; transition: border-color 0.3s; }
+        .form-group input:focus, .form-group select:focus { border-color: #00ff88; outline: none; }
+        .form-group input[type="color"] { height: 50px; cursor: pointer; padding: 5px; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .modal-buttons { display: flex; gap: 12px; margin-top: 25px; }
+        .modal-buttons button { flex: 1; }
+        .btn-delete { background: linear-gradient(135deg, #ff0044, #cc0033); color: white; box-shadow: 0 4px 20px rgba(255, 0, 68, 0.4); }
+        .btn-cancel { background: linear-gradient(135deg, #444, #333); color: white; }
+        .edit-indicator { position: fixed; bottom: 25px; right: 25px; padding: 15px 30px; background: linear-gradient(135deg, #ff8800, #cc6600); border-radius: 30px; font-size: 14px; font-weight: bold; box-shadow: 0 8px 30px rgba(255, 136, 0, 0.5); display: none; z-index: 99; animation: pulse 2s infinite; }
+        .edit-indicator.show { display: block; }
+        .context-menu { display: none; position: fixed; background: rgba(20, 20, 20, 0.98); border: 2px solid #00ff88; border-radius: 10px; padding: 8px 0; box-shadow: 0 10px 40px rgba(0,0,0,0.9); z-index: 2000; min-width: 180px; }
+        .context-menu.show { display: block; }
+        .context-menu-item { padding: 12px 20px; cursor: pointer; color: #e0e0e0; font-size: 14px; transition: all 0.2s; }
+        .context-menu-item:hover { background: rgba(0, 255, 136, 0.15); color: #00ff88; }
+        ::-webkit-scrollbar { width: 12px; height: 12px; }
+        ::-webkit-scrollbar-track { background: #1a1a1a; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 6px; }
+        ::-webkit-scrollbar-thumb:hover { background: #444; }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <div class="toolbar-left">
+            <div class="logo">⚡ SCADA</div>
+            <button id="editBtn" class="btn btn-edit">✏️ Edição</button>
+            <button id="addBtn" class="btn btn-add">➕ Adicionar</button>
+            <button id="testBtn" class="btn btn-connect" style="display:none;" onclick="testConnection()">🔧 Testar</button>
+        </div>
+        <div class="toolbar-right">
+            <div class="status-badge" id="statusBadge">
+                <div class="status-dot"></div>
+                <span id="statusText">Desconectado</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="canvas-container">
+        <div class="scada-canvas" id="scadaCanvas"></div>
+    </div>
+
+    <div class="edit-indicator" id="editIndicator">✏️ MODO EDIÇÃO - Arraste os elementos</div>
+
+    <!-- Modal Adicionar -->
+    <div class="modal" id="addModal">
+        <div class="modal-content">
+            <h2>➕ Adicionar Elemento</h2>
+            <div class="form-group">
+                <label>Tipo de Elemento</label>
+                <select id="itemType">
+                    <option value="btn-toggle">🔘 Botão Toggle (Liga/Desliga)</option>
+                    <option value="btn-momentary">🔘 Botão Momentâneo (Pressionar)</option>
+                    <option value="display-led">💡 Display LED</option>
+                    <option value="display-gauge">📊 Display Gauge (Medidor)</option>
+                    <option value="display-bar">📊 Display Barra Vertical</option>
+                    <option value="display-text">🔢 Display Texto/Número</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Nome do Elemento</label>
+                <input type="text" id="itemName" placeholder="Ex: Bomba Principal">
+            </div>
+            <div class="form-group">
+                <label>Variável Controlada</label>
+                <select id="itemVariable"></select>
+            </div>
+            <div class="form-row" id="colorRow">
+                <div class="form-group"><label>Cor Desligado</label><input type="color" id="colorOff" value="#ff0044"></div>
+                <div class="form-group"><label>Cor Ligado</label><input type="color" id="colorOn" value="#00ff88"></div>
+            </div>
+            <div class="form-row" id="minmaxRow" style="display:none;">
+                <div class="form-group"><label>Valor Mínimo</label><input type="number" id="minValue" value="0"></div>
+                <div class="form-group"><label>Valor Máximo</label><input type="number" id="maxValue" value="1023"></div>
+            </div>
+            <div class="modal-buttons">
+                <button class="btn btn-add" onclick="addItem()">Adicionar</button>
+                <button class="btn btn-cancel" onclick="closeModal('addModal')">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Editar -->
+    <div class="modal" id="editModal">
+        <div class="modal-content">
+            <h2>✏️ Editar Elemento</h2>
+            <div class="form-group"><label>Nome</label><input type="text" id="editName"></div>
+            <div class="form-group"><label>Variável</label><select id="editVariable"></select></div>
+            <div class="form-row">
+                <div class="form-group"><label>Cor Desligado</label><input type="color" id="editColorOff"></div>
+                <div class="form-group"><label>Cor Ligado</label><input type="color" id="editColorOn"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>Valor Mínimo</label><input type="number" id="editMinValue"></div>
+                <div class="form-group"><label>Valor Máximo</label><input type="number" id="editMaxValue"></div>
+            </div>
+            <div class="modal-buttons">
+                <button class="btn btn-add" onclick="saveEdit()">Salvar</button>
+                <button class="btn btn-delete" onclick="deleteItem()">Excluir</button>
+                <button class="btn btn-cancel" onclick="closeModal('editModal')">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Context Menu -->
+    <div class="context-menu" id="contextMenu">
+        <div class="context-menu-item" onclick="editItemContext()">✏️ Editar Propriedades</div>
+        <div class="context-menu-item" onclick="duplicateItemContext()">📋 Duplicar</div>
+        <div class="context-menu-item" onclick="deleteItemContext()">🗑️ Excluir</div>
+    </div>
+
+    <script src="port_catalog.js"></script>
+    <script src="scada.js"></script>
+</body>
+</html>
